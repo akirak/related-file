@@ -1,5 +1,5 @@
 *.itf
 *.po*
 *.tmp
-/main
-/main-tmp*
+/related-file
+/related-file-tmp*
