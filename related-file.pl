@@ -153,7 +153,8 @@ elixir_related_file(XDir, XNoExt, _, YDir, YBase, Type) :-
     locate_dominating_file(XDir, 'mix.exs', Root),
     path_get_relative(Root, XDir, XRelative),
     path_split_list(XRelative, XSegments),
-    elixir_related_file_1(XSegments, XNoExt, YDir, YBase, Type).
+    elixir_related_file_1(XSegments, XNoExt, YRelative, YBase, Type),
+    path_concat(Root, YRelative, YDir).
 
 elixir_related_file_1(['lib'|Rest], NonExt, Dir, Base, 'test') :-
     atom_concat(NonExt, '_test.exs', Base),
