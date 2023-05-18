@@ -1,7 +1,7 @@
 # related-file
 
-This is a Prolog program that prints the related files of a file.
-My plan is to integrate Emacs with this program.
+This is a Prolog program that prints related files of a file according to
+predefined rules. My plan is to integrate Emacs with this program.
 
 ## Installation
 
@@ -26,3 +26,12 @@ Each output line is formatted as follows:
 
 where `TYPE` indicates the type of the relationship and `FILENAME` is an
 absolute path of the related file.
+
+## Inspirational sources
+
+As noted above, my plan is to integrate this program into Emacs. Here is a list
+of alternatives:
+
+- `ff-find-related-file`
+- `find-sibling-file` (available since the version 29 of Emacs)
+- [related-files](https://github.com/DamienCassou/related-files) package by Damien Cassou
