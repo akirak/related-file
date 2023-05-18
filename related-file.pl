@@ -21,7 +21,7 @@ usage :-
 
 find_default(X, []) :-
     path_splitext(X, _, XExt),
-    default_types_by_ext(XExt, Types),
+    default_types_for_ext(XExt, Types),
     find_related_files_of_types(X, Types).
 find_default(X, Types) :-
     find_related_files_of_types(X, Types).
@@ -43,12 +43,9 @@ find_related_file_of_type(X, Type) :-
 % ------------------------------------------------------------------------------
 
 related_file(X, Y, Type) :-
-    path_split(X, XDir, XBase),
-    path_splitext(XBase, XNoExt, XExt),
-    if((related_file_1(XDir, XNoExt, XExt, YDir, YBase, Type),
-        file_in_directory(YDir, YBase)),
-       path_concat(YDir, YBase, Y),
-       false).
+    path_splitext(X, _, XExt),
+    related_file_by_ext(XExt, X, Y, Type),
+    file_exists(Y).
 
 % ------------------------------------------------------------------------------
 % Utilities
@@ -72,21 +69,23 @@ locate_dominating_file(Start, File, Root) :-
 % Mappings
 % ------------------------------------------------------------------------------
 
-default_types_by_ext(Ext, Types) :- js_ext(Ext), js_types(Types).
-default_types_by_ext(Ext, Types) :- elixir_ext(Ext), elixir_types(Types).
-default_types_by_ext('.el', Types) :- elisp_types(Types).
-default_types_by_ext(_, []).
+default_types_for_ext(Ext, Types) :- js_ext(Ext), js_types(Types).
+default_types_for_ext(Ext, Types) :- elixir_ext(Ext), elixir_types(Types).
+default_types_for_ext('.el', Types) :- elisp_types(Types).
+default_types_for_ext(_, []).
 
-related_file_1(XDir, XNoExt, XExt, YDir, YBase, Type) :-
+related_file_by_ext(XExt, X, Y, Type) :-
     js_ext(XExt),
-    js_related_file(XDir, XNoExt, XExt, YDir, YBase, Type).
+    js_related_file(X, Y, Type).
 
-related_file_1(XDir, XNoExt, '.el', YDir, YBase, Type) :-
-    elisp_related_file(XDir, XNoExt, '.el', YDir, YBase, Type).
+related_file_by_ext('.el', X, Y, Type) :-
+    path_split(X, XDir, XBase),
+    elisp_related_file(XBase, YBase, Type),
+    path_concat(XDir, YBase, Y).
 
-related_file_1(XDir, XNoExt, XExt, YDir, YBase, Type) :-
-    elixir_ext(XExt),
-    elixir_related_file(XDir, XNoExt, XExt, YDir, YBase, Type).
+related_file_by_ext(Ext, X, Y, Type) :-
+    elixir_ext(Ext),
+    elixir_related_file(X, Y, Type).
 
 % ------------------------------------------------------------------------------
 % JavaScript
@@ -96,35 +95,45 @@ js_ext(Ext) :- member(Ext, ['.ts', '.tsx', '.js', '.jsx']).
 
 js_types(['impl', 'test', 'stories']).
 
-js_related_file(XDir, XNoExt, XExt, YDir, YBase, 'impl') :-
-    path_splitext(XNoExt, XNoExt1, XExt1),
-    member(XExt1, ['.test', '.spec', '.stories']),
-    js_impl_dir(XDir, YDir),
-    atom_concat(XNoExt1, XExt, YBase).
+js_related_file(X, Y, 'impl') :-
+    path_split(X, XDir, XBase),
+    js_remove_extra_suffix(['.test', '.spec', '.stories'], XBase, YBase),
+    js_remove_optional_dir(['__tests__', '__stories__'], XDir, YDir),
+    path_concat(YDir, YBase, Y).
 
-js_related_file(XDir, XNoExt, XExt, YDir, YBase, 'test') :-
-    js_ext(XExt),
-    path_concat(XDir, '__tests__', YDir1),
-    member(YDir, [XDir, YDir1]),
-    atom_concat('.test', XExt, YExt1),
-    atom_concat('.spec', XExt, YExt2),
-    member(YExt, [YExt1, YExt2]),
-    path_splitext(YBase, XNoExt, YExt).
+js_related_file(X, Y, 'test') :-
+    path_split(X, XDir, XBase),
+    js_append_optional_dir('__tests__', XDir, YDir),
+    js_add_extra_suffix(['.spec', '.test'], XBase, YBase),
+    path_concat(YDir, YBase, Y).
 
-js_related_file(XDir, XNoExt, XExt, YDir, YBase, 'stories') :-
-    js_ext(XExt),
-    path_concat(XDir, '__stories__', YDir1),
-    member(YDir, [XDir, YDir1]),
-    atom_concat('.stories', XExt, YExt),
-    path_splitext(YBase, XNoExt, YExt).
+js_related_file(X, Y, 'stories') :-
+    path_split(X, XDir, XBase),
+    js_append_optional_dir('__stories__', XDir, YDir),
+    js_add_extra_suffix(['.stories'], XBase, YBase),
+    path_concat(YDir, YBase, Y).
 
-js_impl_dir(TestDir, ImplDir) :-
-    path_split(TestDir, TestDir1, Subdir),
-    member(Subdir, ['__tests__', '__stories__']),
-    TestDir1 = ImplDir.
+js_remove_extra_suffix(ExtraSuffixes, Base, RemovedBase) :-
+    path_splitext(Base, NoExt, Ext),
+    path_splitext(NoExt, NoExt1, Ext1),
+    member(Ext1, ExtraSuffixes),
+    atom_concat(NoExt1, Ext, RemovedBase).
 
-js_impl_dir(TestDir, ImplDir) :-
-    TestDir = ImplDir.
+js_remove_optional_dir(Dirs, OldDir, NewDir) :-
+    path_split(OldDir, OldDir1, SubDir),
+    if(member(SubDir, Dirs),
+       NewDir = OldDir1,
+       NewDir = OldDir).
+
+js_append_optional_dir(SubDir, OldDir, NewDir) :-
+    path_concat(OldDir, SubDir, NewDir1),
+    member(NewDir, [OldDir, NewDir1]).
+
+js_add_extra_suffix(ExtraSuffixes, OldBase, NewBase) :-
+    path_splitext(OldBase, NoExt, Ext),
+    member(ExtraSuffix, ExtraSuffixes),
+    atom_concat(ExtraSuffix, Ext, NewExt),
+    atom_concat(NoExt, NewExt, NewBase).
 
 % ------------------------------------------------------------------------------
 % Emacs Lisp
@@ -132,12 +141,12 @@ js_impl_dir(TestDir, ImplDir) :-
 
 elisp_types(['impl', 'test']).
 
-elisp_related_file(XDir, XNoExt, '.el', YDir, YBase, 'test') :-
-    XDir = YDir,
-    path_splitext(YBase, XNoExt, '-test.el').
+elisp_related_file(XBase, YBase, 'test') :-
+    path_splitext(XBase, XNoExt, _),
+    atom_concat(XNoExt, '-test.el', YBase).
 
-elisp_related_file(XDir, XNoExt, '.el', YDir, YBase, 'impl') :-
-    XDir = YDir,
+elisp_related_file(XBase, YBase, 'impl') :-
+    path_splitext(XBase, XNoExt, _),
     atom_concat(YNoExt, '-test', XNoExt),
     atom_concat(YNoExt, '.el', YBase).
 
@@ -149,20 +158,25 @@ elixir_ext(Ext) :- member(Ext, ['.ex', '.exs']).
 
 elixir_types(['lib', 'test']).
 
-elixir_related_file(XDir, XNoExt, _, YDir, YBase, Type) :-
-    locate_dominating_file(XDir, 'mix.exs', Root),
-    path_get_relative(Root, XDir, XRelative),
+elixir_related_file(X, Y, Type) :-
+    path_split(X, XDir, XBase),
+    locate_dominating_file(XDir, 'mix.exs', MixRoot),
+    path_get_relative(MixRoot, XDir, XRelative),
     path_split_list(XRelative, XSegments),
-    elixir_related_file_1(XSegments, XNoExt, YRelative, YBase, Type),
-    path_concat(Root, YRelative, YDir).
+    elixir_dir_pair(XSegments, YSegments, Type),
+    elixir_base(XBase, YBase, Type),
+    path_concat_list(YSegments, YRelative),
+    path_concat(MixRoot, YRelative, YDir),
+    path_concat(YDir, YBase, Y).
 
-elixir_related_file_1(['lib'|Rest], NonExt, Dir, Base, 'test') :-
-    atom_concat(NonExt, '_test.exs', Base),
-    list_concat([['test'], Rest], Segments),
-    path_concat_list(Segments, Dir).
+elixir_dir_pair(['lib'|Rest], ['test'|Rest], 'test').
+elixir_dir_pair(['test'|Rest], ['lib'|Rest], 'lib').
 
-elixir_related_file_1(['test'|Rest], NonExt, Dir, Base, 'lib') :-
-    atom_concat(NewNonExt, '_test', NonExt),
-    path_splitext(Base, NewNonExt, '.ex'),
-    list_concat([['lib'], Rest], Segments),
-    path_concat_list(Segments, Dir).
+elixir_base(XBase, YBase, 'test') :-
+    path_splitext(XBase, XNoExt, _),
+    atom_concat(XNoExt, '_test.exs', YBase).
+
+elixir_base(XBase, YBase, 'lib') :-
+    path_splitext(XBase, XNoExt, _),
+    atom_concat(YNoExt, '_test', XNoExt),
+    atom_concat(YNoExt, '.ex', YBase).
